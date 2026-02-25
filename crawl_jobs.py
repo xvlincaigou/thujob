@@ -23,6 +23,14 @@ try:
 except ImportError:
     DOCX_AVAILABLE = False
 
+# 可选的 excel 导出
+try:
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
+    EXCEL_AVAILABLE = True
+except ImportError:
+    EXCEL_AVAILABLE = False
+
 
 BASE_URL = "https://career.cic.tsinghua.edu.cn/xsglxt/f/jyxt/anony/xxfb"
 HEADERS = {
@@ -143,6 +151,67 @@ def save_to_docx(jobs, filename):
 
     # 保存文档
     doc.save(filename)
+
+
+def save_to_excel(jobs, filename):
+    """保存招聘信息到 Excel 文件"""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "招聘信息"
+
+    # 设置列宽
+    ws.column_dimensions['A'].width = 12
+    ws.column_dimensions['B'].width = 40
+    ws.column_dimensions['C'].width = 30
+    ws.column_dimensions['D'].width = 10
+    ws.column_dimensions['E'].width = 60
+    ws.column_dimensions['F'].width = 100
+
+    # 定义样式
+    header_font = Font(bold=True, size=12)
+    header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+    header_font_color = Font(bold=True, size=12, color="FFFFFF")
+    thin_border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+
+    # 添加标题行
+    headers = ['发布日期', '职位标题', '公司名称', '发布范围', '详情链接', '详细内容']
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.font = header_font_color
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+        cell.border = thin_border
+
+    # 添加数据行
+    for row, job in enumerate(jobs, 2):
+        ws.cell(row=row, column=1, value=job.get('date', ''))
+        ws.cell(row=row, column=2, value=job.get('title', ''))
+        ws.cell(row=row, column=3, value=job.get('company', ''))
+        ws.cell(row=row, column=4, value=job.get('scope', ''))
+        ws.cell(row=row, column=5, value=job.get('url', ''))
+
+        # 详细内容（如果有）
+        detail_content = ''
+        if job.get('detail') and job['detail'].get('full_content'):
+            detail_content = job['detail']['full_content']
+        ws.cell(row=row, column=6, value=detail_content)
+
+        # 设置边框和对齐
+        for col in range(1, 7):
+            cell = ws.cell(row=row, column=col)
+            cell.border = thin_border
+            cell.alignment = Alignment(vertical='top', wrap_text=True)
+
+    # 冻结首行
+    ws.freeze_panes = 'A2'
+
+    # 保存文件
+    wb.save(filename)
 
 
 def fetch_page(page_no):
@@ -294,9 +363,10 @@ def crawl_jobs(start_date=None, end_date=None, max_pages=None, output_file=None,
     all_jobs.sort(key=lambda x: x.get('date', ''), reverse=True)
 
     if output_basename:
-        # 交互模式：同时生成 json 和 docx
+        # 交互模式：同时生成 json、docx 和 excel
         json_file = f"{output_basename}.json"
         docx_file = f"{output_basename}.docx"
+        excel_file = f"{output_basename}.xlsx"
 
         # 保存为 JSON
         with open(json_file, 'w', encoding='utf-8') as f:
@@ -309,6 +379,13 @@ def crawl_jobs(start_date=None, end_date=None, max_pages=None, output_file=None,
             print(f"Word 文档已保存到: {docx_file}")
         else:
             print("警告：python-docx 库未安装，跳过生成 Word 文档")
+
+        # 保存为 Excel
+        if EXCEL_AVAILABLE:
+            save_to_excel(all_jobs, excel_file)
+            print(f"Excel 表格已保存到: {excel_file}")
+        else:
+            print("警告：openpyxl 库未安装，跳过生成 Excel 文件")
 
     elif output_file:
         # 命令行模式：根据文件扩展名决定输出格式
@@ -409,7 +486,7 @@ def interactive_mode():
     print(f"  结束日期: {end_date}")
     print(f"  获取详情页: {'是' if fetch_details else '否'}")
     print(f"  最大页数: {max_pages or '不限制'}")
-    print(f"  输出文件: {basename}.json 和 {basename}.docx")
+    print(f"  输出文件: {basename}.json / {basename}.docx / {basename}.xlsx")
     print("=" * 60)
     print()
 
@@ -433,6 +510,7 @@ def interactive_mode():
     print(f"爬取完成！结果已保存到:")
     print(f"  - {basename}.json")
     print(f"  - {basename}.docx")
+    print(f"  - {basename}.xlsx")
 
 
 def main():
